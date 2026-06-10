@@ -65,7 +65,7 @@ exports.handler = async () => {
         groups[id] = {
           name:    { en: f.league.name,    ar: ar("comps", f.league.name) },
           country: { en: f.league.country, ar: ar("countries", f.league.country) },
-          flag:    f.league.flag || f.league.logo || "🌍",
+          flag:    "🌍",
           stage:   roundLabel(f.league.round),
           matches: []
         };
