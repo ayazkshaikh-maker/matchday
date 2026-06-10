@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Matchday · يوم المباراة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Saira+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* Stadium-at-night palette — pitch dark ground, floodlight lime, goal coral */
+    --ground:        #0B130E;
+    --ground-2:      #0F1A12;
+    --turf-line:     rgba(197,243,44,0.10);
+    --surface:       #14211A;
+    --surface-2:     #1B2C22;
+    --line:          rgba(255,255,255,0.08);
+    --floodlight:    #C5F32C;   /* primary accent: fresh grass / LED */
+    --goal:          #FF5C39;   /* live / goal moments */
+    --ink:           #EEF3EC;
+    --ink-soft:      #93A398;
+    --ink-faint:     #5E6E63;
+
+    --font-display:  "Saira Condensed", system-ui, sans-serif;
+    --font-body:     "IBM Plex Sans Arabic", system-ui, sans-serif;
+
+    --radius:        14px;
+    --maxw:          820px;
+  }
+  html[lang="ar"]{
+    --font-display: "Cairo", system-ui, sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:
+      repeating-linear-gradient(180deg, var(--ground) 0px, var(--ground) 46px, var(--ground-2) 46px, var(--ground-2) 92px);
+    color:var(--ink);
+    font-family:var(--font-body);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  a{ color:inherit; }
+  button{ font-family:inherit; cursor:pointer; }
+
+  .wrap{ max-width:var(--maxw); margin:0 auto; padding:0 18px 80px; }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:30;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 18px;
+    background:linear-gradient(180deg, var(--ground) 70%, transparent);
+    max-width:var(--maxw); margin:0 auto;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; font-family:var(--font-display); font-weight:800; letter-spacing:0.04em; font-size:20px; }
+  .brand .dot{ width:11px; height:11px; border-radius:50%; background:var(--floodlight); box-shadow:0 0 16px var(--floodlight); }
+  .langswitch{ display:flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; background:var(--surface); }
+  .langswitch button{
+    border:0; background:transparent; color:var(--ink-soft);
+    padding:7px 14px; font-size:13px; font-weight:600;
+  }
+  .langswitch button.on{ background:var(--floodlight); color:#0a0f08; }
+
+  /* ---------- Hero scoreboard ---------- */
+  .board{
+    position:relative; overflow:hidden;
+    border:1px solid var(--line); border-radius:var(--radius);
+    background:
+      radial-gradient(120% 140% at 80% -20%, rgba(197,243,44,0.16), transparent 55%),
+      var(--surface);
+    padding:26px 24px;
+    margin-top:6px;
+  }
+  .board::after{ /* floodlight stripes */
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(90deg, transparent 0 38px, var(--turf-line) 38px 39px);
+    mask:linear-gradient(180deg, transparent, #000 120%);
+  }
+  .board .eyebrow{ color:var(--floodlight); font-size:12px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; }
+  html[lang="ar"] .board .eyebrow{ letter-spacing:0; }
+  .board h1{
+    font-family:var(--font-display); font-weight:800;
+    font-size:clamp(34px,7vw,56px); line-height:0.95; margin:8px 0 4px;
+  }
+  .board .date{ color:var(--ink-soft); font-size:15px; }
+  .board .presenter{ position:relative; z-index:2; color:var(--ink-soft); font-size:14px; margin-top:6px; }
+  .board .presenter strong{ color:var(--ink); font-weight:700; }
+  .board .presenter a{ color:var(--floodlight); text-decoration:none; font-weight:600; }
+  .board .presenter a:hover{ text-decoration:underline; }
+  .board .meta{ position:relative; z-index:2; display:flex; gap:26px; margin-top:20px; flex-wrap:wrap; }
+
+  /* ---------- News ticker ---------- */
+  .ticker{ direction:ltr; display:flex; align-items:stretch; margin-top:16px; border:1px solid var(--line); background:var(--surface); border-radius:10px; overflow:hidden; }
+  .ticker[hidden]{ display:none; }
+  .ticker .tag{ flex:none; background:var(--goal); color:#fff; font-family:var(--font-display); font-weight:800; font-size:13px; padding:0 13px; letter-spacing:.07em; display:flex; align-items:center; gap:7px; }
+  .ticker .tag::before{ content:""; width:7px; height:7px; border-radius:50%; background:#fff; animation:pulse 1.4s infinite; }
+  .ticker .viewport{ overflow:hidden; flex:1; }
+  .ticker .track{ display:inline-flex; align-items:center; white-space:nowrap; gap:30px; padding:11px 24px; animation:scroll 55s linear infinite; }
+  .ticker:hover .track{ animation-play-state:paused; }
+  .ticker a{ color:var(--ink); text-decoration:none; font-size:13.5px; }
+  .ticker a:hover{ color:var(--floodlight); }
+  .ticker .sep{ color:var(--ink-faint); }
+  @keyframes scroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+  .stat .n{ font-family:var(--font-display); font-size:30px; font-weight:800; line-height:1; }
+  .stat .n.live{ color:var(--goal); }
+  .stat .k{ color:var(--ink-faint); font-size:12px; text-transform:uppercase; letter-spacing:0.1em; margin-top:4px; }
+  html[lang="ar"] .stat .k{ letter-spacing:0; }
+  .clock{ position:relative; z-index:2; margin-inline-start:auto; text-align:end; }
+  .clock .t{ font-family:var(--font-display); font-size:30px; font-weight:700; letter-spacing:0.02em; }
+  .clock .tz{ color:var(--ink-faint); font-size:12px; }
+
+  /* ---------- Tabs ---------- */
+  .tabs{ display:flex; gap:8px; margin:22px 0 14px; }
+  .tab{
+    border:1px solid var(--line); background:var(--surface);
+    color:var(--ink-soft); border-radius:999px; padding:8px 18px; font-weight:600; font-size:14px;
+  }
+  .tab.on{ background:var(--ink); color:#0a0f08; border-color:var(--ink); }
+  .tab .badge{ display:inline-block; margin-inline-start:7px; background:var(--goal); color:#fff; font-size:11px; padding:1px 7px; border-radius:999px; }
+
+  /* ---------- Competition group ---------- */
+  .comp{ margin-bottom:22px; }
+  .comp-head{
+    display:flex; align-items:center; gap:11px;
+    padding:9px 14px; border-radius:10px 10px 0 0;
+    background:linear-gradient(90deg, var(--surface-2), var(--surface));
+    border:1px solid var(--line); border-bottom:0;
+  }
+  .comp-flag{ width:22px; height:16px; border-radius:3px; background:var(--surface-2); flex:none; object-fit:cover; border:1px solid var(--line); }
+  .comp-name{ font-weight:700; font-size:14px; }
+  .comp-country{ color:var(--ink-faint); font-size:12px; margin-inline-start:auto; }
+
+  .matches{ border:1px solid var(--line); border-radius:0 0 10px 10px; overflow:hidden; }
+
+  /* ---------- Match row ---------- */
+  .match{ background:var(--surface); border-bottom:1px solid var(--line); }
+  .match:last-child{ border-bottom:0; }
+  .match-main{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; padding:16px 14px 12px; }
+  .team{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .team.away{ flex-direction:row-reverse; text-align:end; }
+  .team .nm{ font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .crest{ width:34px; height:34px; border-radius:50%; flex:none; display:grid; place-items:center; font-family:var(--font-display); font-weight:800; font-size:14px; color:#0a0f08; }
+  .center{ text-align:center; min-width:78px; }
+  .ko{ font-family:var(--font-display); font-size:22px; font-weight:700; letter-spacing:0.02em; }
+  .status{ font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-faint); margin-top:2px; }
+  html[lang="ar"] .status{ letter-spacing:0; }
+  .status.live{ color:var(--goal); font-weight:700; }
+  .status.live::before{ content:""; display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--goal); margin-inline-end:5px; animation:pulse 1.4s infinite; vertical-align:middle; }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+  .match-foot{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:0 14px 14px; }
+  .watch-on{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .watch-lbl{ color:var(--ink-faint); font-size:12px; }
+  .chan{
+    display:inline-flex; align-items:center; gap:5px; text-decoration:none;
+    border:1px solid var(--line); background:var(--surface-2);
+    color:var(--ink); font-size:12px; font-weight:600; padding:4px 10px; border-radius:7px;
+  }
+  .chan:hover{ border-color:var(--floodlight); }
+  .chan::after{ content:"↗"; font-size:10px; color:var(--ink-faint); }
+  .together{
+    margin-inline-start:auto; border:0; border-radius:8px;
+    background:var(--floodlight); color:#0a0f08; font-weight:700; font-size:13px;
+    padding:8px 14px; display:inline-flex; align-items:center; gap:7px;
+  }
+  .together:hover{ filter:brightness(1.05); }
+
+  .empty{ text-align:center; color:var(--ink-soft); padding:48px 20px; border:1px dashed var(--line); border-radius:var(--radius); }
+
+  /* ---------- Modal ---------- */
+  .modal-bg{ position:fixed; inset:0; background:rgba(4,8,5,0.72); display:none; place-items:center; z-index:60; padding:20px; }
+  .modal-bg.show{ display:grid; }
+  .modal{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:24px; max-width:420px; width:100%; }
+  .modal h3{ font-family:var(--font-display); font-size:24px; margin:0 0 4px; }
+  .modal p{ color:var(--ink-soft); font-size:14px; margin:0 0 16px; }
+  .link-row{ display:flex; gap:8px; }
+  .link-row input{ flex:1; background:var(--ground); border:1px solid var(--line); color:var(--ink); border-radius:8px; padding:10px 12px; font-family:var(--font-body); font-size:13px; }
+  .copy{ border:0; background:var(--floodlight); color:#0a0f08; font-weight:700; border-radius:8px; padding:0 16px; }
+  .note{ font-size:12px; color:var(--ink-faint); margin-top:14px; }
+  .close{ display:block; margin-top:18px; width:100%; background:transparent; border:1px solid var(--line); color:var(--ink-soft); border-radius:8px; padding:9px; font-weight:600; }
+
+  footer{ color:var(--ink-faint); font-size:12px; text-align:center; margin-top:34px; line-height:1.7; }
+
+  :focus-visible{ outline:2px solid var(--floodlight); outline-offset:2px; border-radius:6px; }
+  @media (prefers-reduced-motion:reduce){ *{ animation:none !important; } .ticker .viewport{ overflow-x:auto; } }
+  @media (max-width:520px){
+    .match-main{ grid-template-columns:1fr auto 1fr; gap:6px; }
+    .team .nm{ font-size:13px; }
+    .crest{ width:30px; height:30px; }
+    .together{ margin-inline-start:0; width:100%; justify-content:center; }
+    .watch-on{ width:100%; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span><span id="brandName">MATCHDAY</span></div>
+    <div class="langswitch" role="group" aria-label="Language">
+      <button id="enBtn" class="on" onclick="setLang('en')">EN</button>
+      <button id="arBtn" onclick="setLang('ar')">ع</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+
+    <section class="board">
+      <div class="eyebrow" id="lblToday">TODAY'S MATCHES</div>
+      <h1 id="boardTitle">Matchday</h1>
+      <div class="presenter" id="presenter"></div>
+      <div class="date" id="boardDate"></div>
+      <div class="meta">
+        <div class="stat"><div class="n" id="statTotal">0</div><div class="k" id="lblFixtures">Fixtures</div></div>
+        <div class="stat"><div class="n live" id="statLive">0</div><div class="k" id="lblLiveNow">Live now</div></div>
+        <div class="clock">
+          <div class="t" id="clock">--:--</div>
+          <div class="tz" id="tzLabel"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="ticker" id="ticker" hidden>
+      <span class="tag" id="newsTag">LATEST</span>
+      <div class="viewport"><div class="track" id="newsTrack"></div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab on" id="tabAll" onclick="setFilter('all')"></button>
+      <button class="tab" id="tabLive" onclick="setFilter('live')"></button>
+    </div>
+
+    <div id="list"></div>
+
+    <footer>
+      <div id="footLegal"></div>
+      <div id="footBuild"></div>
+    </footer>
+  </div>
+
+  <!-- Watch-together modal -->
+  <div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3 id="mTitle"></h3>
+      <p id="mSub"></p>
+      <div class="link-row">
+        <input id="mLink" readonly />
+        <button class="copy" id="mCopy" onclick="copyLink()"></button>
+      </div>
+      <div class="note" id="mNote"></div>
+      <button class="close" id="mClose" onclick="closeModal()"></button>
+    </div>
+  </div>
+
+<script>
+/* =========================================================================
+   MATCHDAY — bilingual fixtures orchestrator (Build step 1)
+   Stack target: deploy as a single file on Netlify; data from a football API.
+   ========================================================================= */
+
+/* ---- i18n strings -------------------------------------------------------- */
+const I18N = {
+  en:{ brand:"MATCHDAY", title:"Matchday", today:"Today's Matches", fixtures:"Fixtures",
+       live:"Live now", all:"All", liveTab:"Live", round:"Round", final:"Final",
+       semi:"Semi-final", quarter:"Quarter-final", upcoming:"", liveLabel:"LIVE",
+       ft:"Full time", watchOn:"Watch live on", together:"Watch together",
+       withHost:"with", newsTag:"LATEST",
+       empty:"No live matches right now. Check back at kickoff.",
+       mTitle:"Watch together", mSub:"Share this link. Everyone in the room gets synced chat, reactions and the prediction game.",
+       copy:"Copy", copied:"Copied", note:"The room interior (live chat + reactions + predictions) is the next build step. This link reserves the room code.",
+       close:"Close",
+       footLegal:"Broadcaster links point to official, licensed rights-holders only.",
+       footBuild:"Live fixtures · watch rooms · friendly predictions" },
+  ar:{ brand:"يوم المباراة", title:"مباريات اليوم", today:"مباريات اليوم", fixtures:"مباراة",
+       live:"مباشر الآن", all:"الكل", liveTab:"مباشر", round:"الجولة", final:"النهائي",
+       semi:"نصف النهائي", quarter:"ربع النهائي", upcoming:"", liveLabel:"مباشر",
+       ft:"انتهت", watchOn:"شاهد مباشرة على", together:"شاهد معاً",
+       withHost:"مع", newsTag:"الأخبار",
+       empty:"لا توجد مباريات مباشرة الآن. عُد عند انطلاق المباريات.",
+       mTitle:"شاهد معاً", mSub:"شارك هذا الرابط. كل من في الغرفة يحصل على دردشة وتفاعلات ولعبة التوقعات بشكل متزامن.",
+       copy:"نسخ", copied:"تم النسخ", note:"غرفة المشاهدة (الدردشة والتفاعلات والتوقعات) هي خطوة البناء التالية. هذا الرابط يحجز رمز الغرفة.",
+       close:"إغلاق",
+       footLegal:"روابط المشاهدة تشير فقط إلى الجهات الحاصلة على حقوق البث الرسمية.",
+       footBuild:"مباريات مباشرة · غرف مشاهدة · توقعات ودية" }
+};
+
+/* ---- Fixture data --------------------------------------------------------
+   SAMPLE DATA for the demo. In production this array is returned by
+   getFixtures(), which calls your Netlify function (see matchday-fixtures.js)
+   that wraps football-data.org / API-Football. Times are stored in UTC ISO
+   and converted to each viewer's local timezone at render time.
+   ------------------------------------------------------------------------- */
+const today = new Date();
+function utc(h, m){ const d=new Date(today); d.setUTCHours(h,m,0,0); return d.toISOString(); }
+
+const COMPETITIONS = [
+  { name:{en:"International Friendlies", ar:"المباريات الودية"}, country:{en:"International", ar:"دولي"}, flag:"🌍", stage:{key:"round", n:1},
+    matches:[
+      { home:{en:"Portugal",ar:"البرتغال"}, away:{en:"Nigeria",ar:"نيجيريا"}, ko:utc(12,45), status:"live",
+        tv:[{n:"beIN Sports MENA 2",u:"https://connect.bein.com/live/66"},{n:"TOD TV",u:"https://www.tod.tv/ar/sports"}] },
+      { home:{en:"England",ar:"إنجلترا"}, away:{en:"Costa Rica",ar:"كوستاريكا"}, ko:utc(13,0), status:"upcoming",
+        tv:[{n:"beIN Sports MENA 1",u:"https://connect.bein.com/live/65"},{n:"TOD TV",u:"https://www.tod.tv/ar/sports"}] },
+      { home:{en:"Bolivia",ar:"بوليفيا"}, away:{en:"Algeria",ar:"الجزائر"}, ko:utc(17,0), status:"upcoming", tv:[] }
+    ]},
+  { name:{en:"Toulon Tournament", ar:"دورة تولون"}, country:{en:"International", ar:"دولي"}, flag:"🏆", stage:{key:"round", n:5},
+    matches:[
+      { home:{en:"Colombia",ar:"كولومبيا"}, away:{en:"Tunisia",ar:"تونس"}, ko:utc(10,0), status:"upcoming", tv:[] }
+    ]},
+  { name:{en:"Brazil · Série B", ar:"الدوري البرازيلي الدرجة الثانية"}, country:{en:"Brazil", ar:"البرازيل"}, flag:"🇧🇷", stage:{key:"round", n:12},
+    matches:[
+      { home:{en:"Ceará",ar:"سيارا"}, away:{en:"Avaí",ar:"أفاي"}, ko:utc(22,0), status:"upcoming", tv:[] },
+      { home:{en:"Sport Recife",ar:"سبورت"}, away:{en:"Athletic Club",ar:"اتلتيك كلوب"}, ko:utc(23,0), status:"upcoming", tv:[] }
+    ]},
+  { name:{en:"USA · USL Championship", ar:"دوري الولايات المتحدة"}, country:{en:"USA", ar:"الولايات المتحدة"}, flag:"🇺🇸", stage:{key:"round", n:14},
+    matches:[
+      { home:{en:"Tampa Bay Rowdies",ar:"تامبا باي راوديز"}, away:{en:"Charleston Battery",ar:"تشارلستون باتري"}, ko:utc(23,0), status:"upcoming", tv:[] }
+    ]}
+];
+
+/* Live data: calls the Netlify function (API-Football). Falls back to the
+   sample set above if the function isn't reachable yet (e.g. before you set
+   the API key), so the page always renders something.                       */
+async function getFixtures(){
+  try{
+    const r = await fetch('/.netlify/functions/matchday-fixtures');
+    if(!r.ok) throw new Error('fn');
+    const data = await r.json();
+    if(Array.isArray(data) && data.length) return data;
+    throw new Error('empty');
+  }catch(e){
+    return COMPETITIONS; // sample fallback
+  }
+}
+
+/* ---- State --------------------------------------------------------------- */
+let lang = 'en';            // in-memory (artifact-safe). On deploy you may persist to localStorage.
+let filter = 'all';
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/* ---- Helpers ------------------------------------------------------------- */
+function t(k){ return I18N[lang][k]; }
+function hue(str){ let h=0; for(const c of str) h=(h*31+c.charCodeAt(0))%360; return h; }
+function crest(name){
+  const h=hue(name);
+  const initials=name.replace(/[^A-Za-z\u0600-\u06FF ]/g,'').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+  return `<span class="crest" style="background:hsl(${h} 70% 62%)">${initials||'•'}</span>`;
+}
+function localTime(iso){
+  return new Intl.DateTimeFormat(lang==='ar'?'ar':'en-GB',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:tz}).format(new Date(iso));
+}
+function stageLabel(s){
+  if(!s) return '';
+  if(s.key==='round') return `${t('round')} ${s.n}`;
+  return t(s.key);
+}
+
+/* ---- Render -------------------------------------------------------------- */
+async function render(){
+  const comps = await getFixtures();
+  const all = comps.flatMap(c=>c.matches);
+  document.getElementById('statTotal').textContent = all.length;
+  const liveCount = all.filter(m=>m.status==='live').length;
+  document.getElementById('statLive').textContent = liveCount;
+
+  // tab live badge
+  document.getElementById('tabLive').innerHTML =
+    t('liveTab') + (liveCount?` <span class="badge">${liveCount}</span>`:'');
+  document.getElementById('tabAll').textContent = t('all');
+
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+
+  const visible = comps
+    .map(c=>({ ...c, matches:c.matches.filter(m=> filter==='all' || m.status==='live') }))
+    .filter(c=>c.matches.length);
+
+  if(!visible.length){
+    list.innerHTML = `<div class="empty">${t('empty')}</div>`;
+    return;
+  }
+
+  for(const c of visible){
+    const rows = c.matches.map(m=>{
+      const isLive = m.status==='live';
+      const statusHtml = isLive
+        ? `<div class="status live">${t('liveLabel')}</div>`
+        : (m.status==='ft' ? `<div class="status">${t('ft')}</div>` : `<div class="status">${localTimeZoneShort()}</div>`);
+      const tv = m.tv.length
+        ? `<div class="watch-on"><span class="watch-lbl">${t('watchOn')}:</span>${
+            m.tv.map(x=>`<a class="chan" href="${x.u}" target="_blank" rel="noopener noreferrer">${x.n}</a>`).join('')}</div>`
+        : `<div class="watch-on"><span class="watch-lbl">${t('watchOn')}: —</span></div>`;
+      return `
+        <div class="match">
+          <div class="match-main">
+            <div class="team home">${crest(m.home.en)}<span class="nm">${m.home[lang]}</span></div>
+            <div class="center"><div class="ko">${localTime(m.ko)}</div>${statusHtml}</div>
+            <div class="team away">${crest(m.away.en)}<span class="nm">${m.away[lang]}</span></div>
+          </div>
+          <div class="match-foot">
+            ${tv}
+            <button class="together" onclick="openRoom('${encodeURIComponent(m.home.en)}','${encodeURIComponent(m.away.en)}','${encodeURIComponent(m.home.ar)}','${encodeURIComponent(m.away.ar)}','${m.ko}')">⚡ ${t('together')}</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    list.insertAdjacentHTML('beforeend', `
+      <section class="comp">
+        <div class="comp-head">
+          <span class="comp-flag" style="display:grid;place-items:center;border:0;background:transparent;font-size:18px">${c.flag}</span>
+          <span class="comp-name">${c.name[lang]}</span>
+          <span class="comp-country">${stageLabel(c.stage)} · ${c.country[lang]}</span>
+        </div>
+        <div class="matches">${rows}</div>
+      </section>`);
+  }
+}
+function localTimeZoneShort(){ return ''; } // status under upcoming kickoff stays empty; time shown above
+
+/* ---- Language + filter --------------------------------------------------- */
+function setLang(l){
+  lang = l;
+  document.documentElement.lang = l;
+  document.documentElement.dir = (l==='ar') ? 'rtl' : 'ltr';
+  document.getElementById('enBtn').classList.toggle('on', l==='en');
+  document.getElementById('arBtn').classList.toggle('on', l==='ar');
+  applyStatic();
+  render();
+}
+function setFilter(f){
+  filter = f;
+  document.getElementById('tabAll').classList.toggle('on', f==='all');
+  document.getElementById('tabLive').classList.toggle('on', f==='live');
+  render();
+}
+function applyStatic(){
+  document.getElementById('brandName').textContent = t('brand');
+  document.getElementById('lblToday').textContent = t('today');
+  document.getElementById('boardTitle').textContent = t('title');
+  document.getElementById('lblFixtures').textContent = t('fixtures');
+  document.getElementById('lblLiveNow').textContent = t('live');
+  document.getElementById('boardDate').textContent =
+    new Intl.DateTimeFormat(lang==='ar'?'ar':'en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(today);
+  document.getElementById('presenter').innerHTML =
+    `${t('withHost')} <strong>Aws Al Kindi</strong> · <a href="https://www.youtube.com/@kooranation.0" target="_blank" rel="noopener noreferrer">Koora Nation ↗</a>`;
+  document.getElementById('newsTag').textContent = t('newsTag');
+  document.getElementById('tzLabel').textContent = tz.replace('_',' ');
+  document.getElementById('footLegal').textContent = t('footLegal');
+  document.getElementById('footBuild').textContent = t('footBuild');
+  // modal
+  document.getElementById('mTitle').textContent = t('mTitle');
+  document.getElementById('mSub').textContent = t('mSub');
+  document.getElementById('mCopy').textContent = t('copy');
+  document.getElementById('mNote').textContent = t('note');
+  document.getElementById('mClose').textContent = t('close');
+}
+
+/* ---- Watch-together room (hook for build step 2) ------------------------- */
+function roomCode(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
+function openRoom(hEn,aEn,hAr,aAr,ko){
+  const code = roomCode();
+  const base = `${location.origin}${location.pathname.replace(/[^/]*$/,'')}`;
+  const url = `${base}room.html?id=${code}&hEn=${hEn}&aEn=${aEn}&hAr=${hAr}&aAr=${aAr}&ko=${encodeURIComponent(ko)}`;
+  document.getElementById('mLink').value = url;
+  document.getElementById('mCopy').textContent = t('copy');
+  document.getElementById('modalBg').classList.add('show');
+}
+function closeModal(){ document.getElementById('modalBg').classList.remove('show'); }
+function copyLink(){
+  const el=document.getElementById('mLink'); el.select();
+  navigator.clipboard?.writeText(el.value).catch(()=>document.execCommand('copy'));
+  document.getElementById('mCopy').textContent = t('copied');
+}
+
+/* ---- Live news ticker ---------------------------------------------------- */
+async function loadNews(){
+  try{
+    const r = await fetch('/.netlify/functions/matchday-news');
+    if(!r.ok) throw new Error('fn');
+    const items = await r.json();
+    if(Array.isArray(items) && items.length) renderTicker(items);
+  }catch(e){ /* function not deployed yet — leave ticker hidden */ }
+}
+function renderTicker(items){
+  const esc = s => s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const one = items.slice(0,12).map(it=>
+    `<a href="${esc(it.link)}" target="_blank" rel="noopener noreferrer">${esc(it.title)}</a><span class="sep">•</span>`
+  ).join('');
+  // duplicate the run so the loop is seamless (track scrolls to -50%)
+  document.getElementById('newsTrack').innerHTML = one + one;
+  document.getElementById('ticker').hidden = false;
+}
+
+/* ---- Live clock ---------------------------------------------------------- */
+function tick(){
+  document.getElementById('clock').textContent =
+    new Intl.DateTimeFormat(lang==='ar'?'ar':'en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:tz}).format(new Date());
+}
+setInterval(tick, 1000);
+
+/* ---- Init ---------------------------------------------------------------- */
+applyStatic(); render(); tick();
+loadNews(); setInterval(loadNews, 120000);   // refresh news every 2 minutes
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+</script>
+</body>
+</html>

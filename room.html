@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Watch Room · غرفة المشاهدة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Saira+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ground:#0B130E; --ground-2:#0F1A12; --turf-line:rgba(197,243,44,0.10);
+    --surface:#14211A; --surface-2:#1B2C22; --line:rgba(255,255,255,0.08);
+    --floodlight:#C5F32C; --goal:#FF5C39; --ink:#EEF3EC; --ink-soft:#93A398; --ink-faint:#5E6E63;
+    --font-display:"Saira Condensed",system-ui,sans-serif; --font-body:"IBM Plex Sans Arabic",system-ui,sans-serif;
+    --radius:14px;
+  }
+  html[lang="ar"]{ --font-display:"Cairo",system-ui,sans-serif; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; }
+  body{
+    background:repeating-linear-gradient(180deg,var(--ground) 0 46px,var(--ground-2) 46px 92px);
+    color:var(--ink); font-family:var(--font-body); -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  button{ font-family:inherit; cursor:pointer; }
+  a{ color:var(--floodlight); }
+
+  /* ---- Setup / join screens ---- */
+  .screen{ min-height:100vh; display:grid; place-items:center; padding:24px; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:30px; max-width:440px; width:100%; }
+  .card h1{ font-family:var(--font-display); font-size:34px; margin:0 0 6px; }
+  .card p{ color:var(--ink-soft); font-size:14px; margin:0 0 20px; }
+  .card label{ display:block; font-size:12px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.1em; margin:0 0 6px; }
+  html[lang="ar"] .card label{ letter-spacing:0; }
+  .card input{ width:100%; background:var(--ground); border:1px solid var(--line); color:var(--ink); border-radius:10px; padding:13px 14px; font-family:var(--font-body); font-size:16px; }
+  .btn{ border:0; border-radius:10px; background:var(--floodlight); color:#0a0f08; font-weight:700; font-size:15px; padding:13px; width:100%; margin-top:18px; }
+  .btn:hover{ filter:brightness(1.05); }
+  .swatches{ display:flex; gap:8px; margin-top:12px; }
+  .swatch{ width:34px; height:34px; border-radius:50%; border:2px solid transparent; cursor:pointer; }
+  .swatch.on{ border-color:var(--ink); }
+  .setup code{ background:var(--ground); padding:2px 7px; border-radius:6px; color:var(--floodlight); font-size:13px; }
+  .setup ol{ color:var(--ink-soft); font-size:14px; line-height:1.9; padding-inline-start:20px; }
+
+  /* ---- App ---- */
+  #app{ display:none; min-height:100vh; flex-direction:column; }
+  .bar{ position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; padding:12px 16px; background:linear-gradient(180deg,var(--ground) 75%,transparent); border-bottom:1px solid var(--line); }
+  .bar .dot{ width:10px; height:10px; border-radius:50%; background:var(--floodlight); box-shadow:0 0 14px var(--floodlight); flex:none; }
+  .matchtitle{ font-family:var(--font-display); font-weight:700; font-size:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ko{ color:var(--ink-faint); font-size:12px; }
+  .bar .right{ margin-inline-start:auto; display:flex; align-items:center; gap:10px; }
+  .roomcode{ font-size:12px; color:var(--ink-soft); border:1px solid var(--line); border-radius:8px; padding:5px 9px; }
+  .roomcode b{ color:var(--ink); letter-spacing:.05em; }
+  .langswitch{ display:flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; }
+  .langswitch button{ border:0; background:transparent; color:var(--ink-soft); padding:6px 11px; font-size:12px; font-weight:600; }
+  .langswitch button.on{ background:var(--floodlight); color:#0a0f08; }
+  .leave{ border:1px solid var(--line); background:transparent; color:var(--ink-soft); border-radius:8px; padding:6px 11px; font-size:12px; }
+
+  .watchers{ display:flex; align-items:center; gap:6px; padding:10px 16px; flex-wrap:wrap; }
+  .watchers .lbl{ font-size:12px; color:var(--ink-faint); margin-inline-end:4px; }
+  .av{ width:28px; height:28px; border-radius:50%; display:grid; place-items:center; font-size:12px; font-weight:700; color:#0a0f08; font-family:var(--font-display); position:relative; }
+  .av.host::after{ content:"★"; position:absolute; top:-7px; inset-inline-end:-3px; font-size:11px; color:var(--floodlight); }
+
+  .grid{ flex:1; display:grid; grid-template-columns:1fr 360px; gap:14px; padding:6px 16px 20px; align-items:start; }
+  @media (max-width:820px){ .grid{ grid-template-columns:1fr; } }
+
+  .panel{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); }
+  .panel h2{ font-family:var(--font-display); font-size:16px; margin:0; padding:13px 15px; border-bottom:1px solid var(--line); letter-spacing:.03em; }
+  html[lang="ar"] .panel h2{ letter-spacing:0; }
+
+  /* Stage */
+  .stage-body{ padding:15px; }
+  .byo{ background:var(--ground); border:1px dashed var(--line); border-radius:10px; padding:16px; color:var(--ink-soft); font-size:13px; line-height:1.6; }
+  .clockrow{ display:flex; align-items:center; gap:12px; margin-top:14px; }
+  .matchclock{ font-family:var(--font-display); font-size:30px; font-weight:800; }
+  .matchclock.off{ color:var(--ink-faint); }
+  .hostbtn{ border:1px solid var(--floodlight); background:transparent; color:var(--floodlight); border-radius:8px; padding:7px 13px; font-weight:700; font-size:13px; }
+  .reactions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+  .react{ font-size:22px; line-height:1; border:1px solid var(--line); background:var(--surface-2); border-radius:10px; padding:9px 12px; }
+  .react:hover{ border-color:var(--floodlight); transform:translateY(-1px); }
+  .goalbtn{ margin-inline-start:auto; border:0; background:var(--goal); color:#fff; font-weight:800; font-family:var(--font-display); font-size:18px; letter-spacing:.06em; border-radius:10px; padding:9px 20px; }
+  html[lang="ar"] .goalbtn{ letter-spacing:0; }
+
+  /* Chat */
+  .chat{ display:flex; flex-direction:column; height:420px; }
+  @media (max-width:820px){ .chat{ height:340px; } }
+  .msgs{ flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:9px; }
+  .msg{ font-size:14px; line-height:1.4; }
+  .msg .who{ font-weight:700; margin-inline-end:6px; }
+  .msg.system{ color:var(--ink-faint); font-size:12px; text-align:center; }
+  .composer{ display:flex; gap:8px; padding:11px; border-top:1px solid var(--line); }
+  .composer input{ flex:1; background:var(--ground); border:1px solid var(--line); color:var(--ink); border-radius:9px; padding:10px 12px; font-family:var(--font-body); font-size:14px; }
+  .send{ border:0; background:var(--floodlight); color:#0a0f08; font-weight:700; border-radius:9px; padding:0 16px; }
+
+  /* Predictions */
+  .pred{ padding:13px 15px; }
+  .q{ margin-bottom:14px; }
+  .q .qt{ font-size:13px; color:var(--ink-soft); margin-bottom:7px; }
+  .opts{ display:flex; gap:7px; }
+  .opt{ flex:1; border:1px solid var(--line); background:var(--surface-2); color:var(--ink); border-radius:8px; padding:9px 6px; font-size:13px; font-weight:600; text-align:center; }
+  .opt.sel{ border-color:var(--floodlight); background:rgba(197,243,44,.14); color:var(--floodlight); }
+  .opt.correct{ border-color:#3ad07a; background:rgba(58,208,122,.16); color:#7ef0a8; }
+  .opt.wrong{ opacity:.45; }
+  .lockbtn{ width:100%; border:0; border-radius:9px; background:var(--floodlight); color:#0a0f08; font-weight:700; padding:11px; margin-top:4px; }
+  .lockbtn:disabled{ background:var(--surface-2); color:var(--ink-faint); cursor:default; }
+  .hostresolve{ border-top:1px solid var(--line); padding:13px 15px; }
+  .hostresolve .tag{ font-size:11px; color:var(--floodlight); text-transform:uppercase; letter-spacing:.12em; font-weight:700; }
+  html[lang="ar"] .hostresolve .tag{ letter-spacing:0; }
+
+  /* Leaderboard */
+  .lb{ padding:6px 15px 14px; }
+  .lbrow{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .lbrow:last-child{ border-bottom:0; }
+  .rank{ font-family:var(--font-display); font-weight:800; color:var(--ink-faint); width:22px; }
+  .rank.gold{ color:var(--floodlight); }
+  .lbname{ flex:1; font-size:14px; font-weight:600; }
+  .pts{ font-family:var(--font-display); font-weight:800; font-size:18px; }
+
+  /* Floating reactions + goal overlay */
+  #fx{ position:fixed; inset:0; pointer-events:none; z-index:50; overflow:hidden; }
+  .float{ position:absolute; font-size:30px; animation:rise 2.6s ease-out forwards; }
+  @keyframes rise{ 0%{ transform:translateY(0) scale(.6); opacity:0; } 15%{ opacity:1; } 100%{ transform:translateY(-70vh) scale(1.2); opacity:0; } }
+  #goalfx{ position:fixed; inset:0; z-index:55; display:none; place-items:center; pointer-events:none; }
+  #goalfx.show{ display:grid; }
+  .goaltext{ font-family:var(--font-display); font-weight:800; font-size:clamp(60px,18vw,160px); color:var(--goal); text-shadow:0 0 40px rgba(255,92,57,.6); animation:pop .5s ease-out; }
+  .goalwho{ position:absolute; bottom:18%; font-size:18px; color:var(--ink); }
+  @keyframes pop{ 0%{ transform:scale(.4); opacity:0; } 60%{ transform:scale(1.15); } 100%{ transform:scale(1); opacity:1; } }
+  .flash{ position:fixed; inset:0; background:var(--goal); z-index:54; opacity:0; pointer-events:none; }
+  .flash.go{ animation:flash .6s ease-out; }
+  @keyframes flash{ 0%{ opacity:.5; } 100%{ opacity:0; } }
+
+  :focus-visible{ outline:2px solid var(--floodlight); outline-offset:2px; }
+  @media (prefers-reduced-motion:reduce){ *{ animation:none !important; } }
+</style>
+</head>
+<body>
+
+  <!-- SETUP screen (shown if Supabase keys are missing) -->
+  <div class="screen setup" id="setupScreen" style="display:none">
+    <div class="card">
+      <h1 id="setupTitle">One more step</h1>
+      <p id="setupSub">Add your Supabase keys to enable live rooms.</p>
+      <ol id="setupSteps">
+        <li>Create a free project at <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a></li>
+        <li>Open <b>Project Settings → API</b> and copy the <b>Project URL</b> and the <b>anon public</b> key</li>
+        <li>Paste them into the <code>CONFIG</code> block at the top of <code>room.html</code></li>
+        <li>Redeploy. Realtime is on by default — no database tables needed.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- JOIN screen -->
+  <div class="screen" id="joinScreen" style="display:none">
+    <div class="card">
+      <h1 id="joinTitle">Join the room</h1>
+      <p id="joinSub"></p>
+      <label id="nameLbl">Your name</label>
+      <input id="nameInput" maxlength="24" autocomplete="off" />
+      <div class="swatches" id="swatches"></div>
+      <button class="btn" id="joinBtn">Join</button>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app">
+    <div class="bar">
+      <span class="dot"></span>
+      <div>
+        <div class="matchtitle" id="matchTitle">—</div>
+        <div class="ko" id="koLine"></div>
+      </div>
+      <div class="right">
+        <span class="roomcode" id="roomCode"></span>
+        <div class="langswitch"><button id="enBtn" class="on" onclick="setLang('en')">EN</button><button id="arBtn" onclick="setLang('ar')">ع</button></div>
+        <button class="leave" id="leaveBtn" onclick="location.href='index.html'"></button>
+      </div>
+    </div>
+
+    <div class="watchers" id="watchers"></div>
+
+    <div class="grid">
+      <!-- LEFT column -->
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <div class="panel">
+          <h2 id="stageH"></h2>
+          <div class="stage-body">
+            <div class="byo" id="byoNote"></div>
+            <div class="clockrow">
+              <div class="matchclock off" id="matchClock">00:00</div>
+              <button class="hostbtn" id="clockBtn" style="display:none" onclick="toggleClock()"></button>
+            </div>
+            <div class="reactions" id="reactions">
+              <button class="react" onclick="react('⚽')">⚽</button>
+              <button class="react" onclick="react('🔥')">🔥</button>
+              <button class="react" onclick="react('👏')">👏</button>
+              <button class="react" onclick="react('😱')">😱</button>
+              <button class="react" onclick="react('😂')">😂</button>
+              <button class="react" onclick="react('💚')">💚</button>
+              <button class="goalbtn" id="goalBtn" onclick="goal()">GOAL!</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel chat">
+          <h2 id="chatH"></h2>
+          <div class="msgs" id="msgs"></div>
+          <div class="composer">
+            <input id="chatInput" maxlength="240" autocomplete="off" />
+            <button class="send" id="sendBtn" onclick="sendChat()"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT column -->
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <div class="panel">
+          <h2 id="predH"></h2>
+          <div class="pred" id="predBody"></div>
+          <div class="hostresolve" id="hostResolve" style="display:none"></div>
+        </div>
+        <div class="panel">
+          <h2 id="lbH"></h2>
+          <div class="lb" id="lb"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="fx"></div>
+  <div class="flash" id="flash"></div>
+  <div id="goalfx"><div class="goaltext" id="goalText">GOAL!</div><div class="goalwho" id="goalWho"></div></div>
+
+<script>
+/* =========================================================================
+   CONFIG — paste your Supabase Project URL + anon public key here.
+   (Realtime works with just these two values. No database tables needed.)
+   ========================================================================= */
+const CONFIG = {
+  SUPABASE_URL: "",        // e.g. https://abcd1234.supabase.co
+  SUPABASE_ANON_KEY: ""    // the "anon public" key (safe to ship in the browser)
+};
+
+/* ---- i18n ---------------------------------------------------------------- */
+const I18N = {
+  en:{ joinTitle:"Join the room", joinSub:m=>`You're joining ${m}.`, nameLbl:"Your name",
+       join:"Join", leave:"Leave", room:"Room", stage:"Matchday stage",
+       byo:"Open your own licensed stream (beIN, TOD, the official channel) in another tab and keep this room beside it. We sync the room — the chat, the reactions, the game — you bring the picture.",
+       kickoff:"Kick off", stopclock:"Stop", chat:"Live chat", say:"Say something…", send:"Send",
+       preds:"Friendly predictions", lock:"Lock predictions", locked:"Predictions locked",
+       hostTag:"Host controls — set the actual outcomes", publish:"Publish results",
+       lb:"Leaderboard", waiting:"Predictions open until the host publishes results.",
+       results:"Results are in!", joinedMsg:n=>`${n} joined`, leftMsg:n=>`${n} left`,
+       you:"you",
+       q:{ result:"Final result?", goals:"Total goals?", btts:"Both teams to score?", red:"A red card?" },
+       opt:{ draw:"Draw", over:"Over 2.5", under:"Under 2.5", yes:"Yes", no:"No" } },
+  ar:{ joinTitle:"انضم إلى الغرفة", joinSub:m=>`أنت تنضم إلى ${m}.`, nameLbl:"اسمك",
+       join:"انضمام", leave:"خروج", room:"غرفة", stage:"منصة المباراة",
+       byo:"افتح بث المباراة المرخّص (beIN أو TOD أو القناة الرسمية) في نافذة أخرى وضعه بجانب هذه الغرفة. نحن نزامن الغرفة — الدردشة والتفاعلات واللعبة — وأنت تجلب الصورة.",
+       kickoff:"انطلاق", stopclock:"إيقاف", chat:"دردشة مباشرة", say:"اكتب شيئاً…", send:"إرسال",
+       preds:"توقعات ودية", lock:"تثبيت التوقعات", locked:"تم تثبيت التوقعات",
+       hostTag:"تحكّم المضيف — حدّد النتائج الفعلية", publish:"نشر النتائج",
+       lb:"لوحة المتصدرين", waiting:"التوقعات مفتوحة حتى ينشر المضيف النتائج.",
+       results:"ظهرت النتائج!", joinedMsg:n=>`انضم ${n}`, leftMsg:n=>`غادر ${n}`,
+       you:"أنت",
+       q:{ result:"النتيجة النهائية؟", goals:"مجموع الأهداف؟", btts:"يسجل الفريقان؟", red:"بطاقة حمراء؟" },
+       opt:{ draw:"تعادل", over:"أكثر من ٢.٥", under:"أقل من ٢.٥", yes:"نعم", no:"لا" } }
+};
+let lang = 'en';
+const t = k => I18N[lang][k];
+
+/* ---- URL params / match ---- */
+const P = new URLSearchParams(location.search);
+const dec = s => s ? decodeURIComponent(s) : '';
+const MATCH = {
+  id:  P.get('id') || 'DEMO',
+  hEn: dec(P.get('hEn')) || 'Home', aEn: dec(P.get('aEn')) || 'Away',
+  hAr: dec(P.get('hAr')) || dec(P.get('hEn')) || 'المضيف', aAr: dec(P.get('aAr')) || dec(P.get('aEn')) || 'الضيف',
+  ko:  dec(P.get('ko'))
+};
+const homeName = () => lang==='ar' ? MATCH.hAr : MATCH.hEn;
+const awayName = () => lang==='ar' ? MATCH.aAr : MATCH.aEn;
+const matchLabel = () => `${homeName()} ${lang==='ar'?'×':'v'} ${awayName()}`;
+
+/* ---- Prediction model ---- */
+const QUESTIONS = [
+  { id:'result', key:'result', opts:()=>[['H',homeName()],['D',t('opt').draw],['A',awayName()]], points:10 },
+  { id:'goals',  key:'goals',  opts:()=>[['O',t('opt').over],['U',t('opt').under]], points:5 },
+  { id:'btts',   key:'btts',   opts:()=>[['Y',t('opt').yes],['N',t('opt').no]], points:5 },
+  { id:'red',    key:'red',    opts:()=>[['Y',t('opt').yes],['N',t('opt').no]], points:5 }
+];
+
+/* ---- State ---- */
+const COLORS = ['#C5F32C','#FF5C39','#48C9F3','#F3C544','#C588F3','#3AD07A'];
+let me = { id: Math.random().toString(36).slice(2,10), name:'', color:COLORS[0] };
+let myPreds = {};        // {qid: optKey}
+let locked = false;
+let answers = null;      // published correct answers {qid: optKey}
+let myScore = 0;
+let clockStart = null;   // ms timestamp when host kicked off
+let sb, channel;
+
+/* ===================== Boot ===================== */
+function boot(){
+  if(!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY){
+    document.getElementById('setupScreen').style.display='grid';
+    return;
+  }
+  // colour swatches
+  const sw = document.getElementById('swatches');
+  COLORS.forEach((c,i)=>{
+    const b=document.createElement('button'); b.className='swatch'+(i===0?' on':''); b.style.background=c;
+    b.onclick=()=>{ me.color=c; [...sw.children].forEach(x=>x.classList.remove('on')); b.classList.add('on'); };
+    sw.appendChild(b);
+  });
+  applyStatic();
+  document.getElementById('joinScreen').style.display='grid';
+  document.getElementById('nameInput').focus();
+  document.getElementById('joinBtn').onclick = join;
+  document.getElementById('nameInput').addEventListener('keydown',e=>{ if(e.key==='Enter') join(); });
+}
+
+function join(){
+  const n = document.getElementById('nameInput').value.trim();
+  if(!n) return;
+  me.name = n;
+  document.getElementById('joinScreen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  connect();
+}
+
+/* ===================== Realtime ===================== */
+function connect(){
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  channel = sb.channel(`room:${MATCH.id}`, { config:{ presence:{ key:me.id }, broadcast:{ self:false } } });
+
+  channel
+    .on('presence', { event:'sync' }, renderWatchers)
+    .on('presence', { event:'join' }, ({ newPresences }) => newPresences.forEach(p=>{ if(p.id!==me.id) systemMsg(t('joinedMsg')(p.name)); }))
+    .on('presence', { event:'leave' }, ({ leftPresences }) => leftPresences.forEach(p=> systemMsg(t('leftMsg')(p.name)) ))
+    .on('broadcast', { event:'chat' }, ({ payload }) => addMsg(payload))
+    .on('broadcast', { event:'react' }, ({ payload }) => floatEmoji(payload.emoji))
+    .on('broadcast', { event:'goal' }, ({ payload }) => goalFx(payload.who))
+    .on('broadcast', { event:'clock' }, ({ payload }) => { clockStart = payload.startedAt; })
+    .on('broadcast', { event:'results' }, ({ payload }) => applyResults(payload.answers))
+    .subscribe(async status => { if(status==='SUBSCRIBED') await track(); });
+
+  setInterval(tickClock, 1000);
+}
+async function track(){
+  await channel.track({ id:me.id, name:me.name, color:me.color, joinedAt:Date.now(), score:myScore, hasPreds:locked });
+}
+function presence(){
+  const st = channel.presenceState();
+  return Object.values(st).map(arr=>arr[0]).filter(Boolean);
+}
+function amHost(){
+  const ppl = presence();
+  if(!ppl.length) return false;
+  const host = ppl.slice().sort((a,b)=>a.joinedAt-b.joinedAt)[0];
+  return host && host.id===me.id;
+}
+
+/* ===================== Watchers + host ===================== */
+function renderWatchers(){
+  const ppl = presence().slice().sort((a,b)=>a.joinedAt-b.joinedAt);
+  const w = document.getElementById('watchers');
+  w.innerHTML = `<span class="lbl">${ppl.length} 👀</span>` + ppl.map((p,i)=>
+    `<span class="av${i===0?' host':''}" title="${escapeHtml(p.name)}" style="background:${p.color}">${escapeHtml(p.name.slice(0,2).toUpperCase())}</span>`).join('');
+  // host-only controls
+  const host = amHost();
+  document.getElementById('clockBtn').style.display = host ? '' : 'none';
+  document.getElementById('hostResolve').style.display = (host && !answers) ? '' : 'none';
+  if(host && !answers) renderHostResolve();
+  renderLeaderboard();
+}
+
+/* ===================== Chat ===================== */
+function sendChat(){
+  const el=document.getElementById('chatInput'); const text=el.value.trim(); if(!text) return;
+  const payload={ id:me.id, name:me.name, color:me.color, text, ts:Date.now() };
+  channel.send({ type:'broadcast', event:'chat', payload });
+  addMsg(payload); el.value='';
+}
+function addMsg(p){
+  const box=document.getElementById('msgs'); const d=document.createElement('div'); d.className='msg';
+  const who = p.id===me.id ? t('you') : escapeHtml(p.name);
+  d.innerHTML = `<span class="who" style="color:${p.color}">${who}</span>${escapeHtml(p.text)}`;
+  box.appendChild(d); box.scrollTop=box.scrollHeight;
+}
+function systemMsg(text){
+  const box=document.getElementById('msgs'); const d=document.createElement('div'); d.className='msg system'; d.textContent=text;
+  box.appendChild(d); box.scrollTop=box.scrollHeight;
+}
+function escapeHtml(s){ return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ===================== Reactions + goal ===================== */
+function react(emoji){ channel.send({ type:'broadcast', event:'react', payload:{ emoji } }); floatEmoji(emoji); }
+function floatEmoji(emoji){
+  for(let i=0;i<3;i++){
+    const e=document.createElement('div'); e.className='float'; e.textContent=emoji;
+    e.style.left=(10+Math.random()*80)+'vw'; e.style.bottom='8vh'; e.style.animationDelay=(i*0.12)+'s';
+    document.getElementById('fx').appendChild(e); setTimeout(()=>e.remove(),2800);
+  }
+}
+function goal(){ channel.send({ type:'broadcast', event:'goal', payload:{ who:me.name } }); goalFx(me.name); }
+function goalFx(who){
+  document.getElementById('flash').classList.add('go');
+  const g=document.getElementById('goalfx'); document.getElementById('goalWho').textContent=who?`👏 ${who}`:'';
+  g.classList.add('show');
+  for(let i=0;i<14;i++) setTimeout(()=>floatEmoji('⚽'),i*60);
+  setTimeout(()=>{ g.classList.remove('show'); document.getElementById('flash').classList.remove('go'); },2600);
+}
+
+/* ===================== Shared match clock ===================== */
+function toggleClock(){
+  clockStart = clockStart ? null : Date.now();
+  channel.send({ type:'broadcast', event:'clock', payload:{ startedAt:clockStart } });
+  updateClockBtn();
+}
+function updateClockBtn(){ document.getElementById('clockBtn').textContent = clockStart ? t('stopclock') : t('kickoff'); }
+function tickClock(){
+  const el=document.getElementById('matchClock');
+  if(!clockStart){ el.classList.add('off'); el.textContent='00:00'; updateClockBtn(); return; }
+  el.classList.remove('off');
+  const s=Math.floor((Date.now()-clockStart)/1000);
+  el.textContent = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  updateClockBtn();
+}
+
+/* ===================== Predictions ===================== */
+function renderPred(){
+  const body=document.getElementById('predBody');
+  body.innerHTML = QUESTIONS.map(q=>{
+    const opts=q.opts().map(([k,label])=>{
+      let cls='opt';
+      if(answers){ if(answers[q.id]===k) cls+=' correct'; else if(myPreds[q.id]===k) cls+=' wrong'; }
+      else if(myPreds[q.id]===k) cls+=' sel';
+      const click = (!locked && !answers) ? `onclick="pick('${q.id}','${k}')"` : '';
+      return `<button class="${cls}" ${click}>${label}</button>`;
+    }).join('');
+    return `<div class="q"><div class="qt">${t('q')[q.key]} <span style="color:var(--ink-faint)">+${q.points}</span></div><div class="opts">${opts}</div></div>`;
+  }).join('') + (answers
+      ? `<div class="qt" style="text-align:center;color:var(--floodlight)">${t('results')}</div>`
+      : (locked
+          ? `<button class="lockbtn" disabled>${t('locked')}</button>`
+          : `<button class="lockbtn" id="lockBtn" onclick="lockPreds()">${t('lock')}</button>`));
+}
+function pick(qid,k){ myPreds[qid]=k; renderPred(); }
+function lockPreds(){ locked=true; track(); renderPred(); }
+
+function renderHostResolve(){
+  const box=document.getElementById('hostResolve');
+  box.innerHTML = `<div class="tag">${t('hostTag')}</div>` + QUESTIONS.map(q=>{
+    const opts=q.opts().map(([k,label])=>{
+      const sel = (hostPick[q.id]===k)?' sel':'';
+      return `<button class="opt${sel}" onclick="setAnswer('${q.id}','${k}')">${label}</button>`;
+    }).join('');
+    return `<div class="q"><div class="qt">${t('q')[q.key]}</div><div class="opts">${opts}</div></div>`;
+  }).join('') + `<button class="lockbtn" onclick="publishResults()">${t('publish')}</button>`;
+}
+let hostPick = {};
+function setAnswer(qid,k){ hostPick[qid]=k; renderHostResolve(); }
+function publishResults(){
+  if(Object.keys(hostPick).length < QUESTIONS.length) return; // require all set
+  channel.send({ type:'broadcast', event:'results', payload:{ answers:hostPick } });
+  applyResults(hostPick);
+}
+function applyResults(a){
+  answers=a;
+  myScore = QUESTIONS.reduce((s,q)=> s + (myPreds[q.id] && myPreds[q.id]===a[q.id] ? q.points : 0), 0);
+  document.getElementById('hostResolve').style.display='none';
+  track(); renderPred(); systemMsg(t('results'));
+}
+
+/* ===================== Leaderboard ===================== */
+function renderLeaderboard(){
+  const ppl=presence().slice().sort((a,b)=>(b.score||0)-(a.score||0));
+  document.getElementById('lb').innerHTML = ppl.map((p,i)=>`
+    <div class="lbrow">
+      <span class="rank${i===0&&(p.score||0)>0?' gold':''}">${i+1}</span>
+      <span class="av" style="width:24px;height:24px;background:${p.color}">${escapeHtml(p.name.slice(0,2).toUpperCase())}</span>
+      <span class="lbname">${escapeHtml(p.name)}${p.id===me.id?` (${t('you')})`:''}</span>
+      <span class="pts">${p.score||0}</span>
+    </div>`).join('');
+}
+
+/* ===================== Language ===================== */
+function setLang(l){
+  lang=l; document.documentElement.lang=l; document.documentElement.dir=(l==='ar')?'rtl':'ltr';
+  document.getElementById('enBtn').classList.toggle('on',l==='en');
+  document.getElementById('arBtn').classList.toggle('on',l==='ar');
+  applyStatic(); renderPred(); if(channel){ renderWatchers(); }
+}
+function applyStatic(){
+  document.getElementById('joinTitle').textContent=t('joinTitle');
+  document.getElementById('joinSub').textContent=t('joinSub')(matchLabel());
+  document.getElementById('nameLbl').textContent=t('nameLbl');
+  document.getElementById('joinBtn').textContent=t('join');
+  document.getElementById('leaveBtn').textContent=t('leave');
+  document.getElementById('matchTitle').textContent=matchLabel();
+  document.getElementById('roomCode').innerHTML=`${t('room')} <b>${MATCH.id}</b>`;
+  document.getElementById('stageH').textContent=t('stage');
+  document.getElementById('byoNote').textContent=t('byo');
+  document.getElementById('chatH').textContent=t('chat');
+  document.getElementById('chatInput').placeholder=t('say');
+  document.getElementById('sendBtn').textContent=t('send');
+  document.getElementById('predH').textContent=t('preds');
+  document.getElementById('lbH').textContent=t('lb');
+  if(MATCH.ko){
+    const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
+    document.getElementById('koLine').textContent=
+      new Intl.DateTimeFormat(lang==='ar'?'ar':'en-GB',{weekday:'short',hour:'2-digit',minute:'2-digit',timeZone:tz}).format(new Date(MATCH.ko))+' · '+tz.replace('_',' ');
+  }
+  updateClockBtn();
+}
+
+document.getElementById('chatInput')?.addEventListener('keydown',e=>{ if(e.key==='Enter') sendChat(); });
+boot();
+renderPred();
+</script>
+</body>
+</html>
