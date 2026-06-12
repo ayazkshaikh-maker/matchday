@@ -1,7 +1,22 @@
 // netlify/functions/matchday-fixtures.js
+// Full-coverage fixtures feed for index.html, powered by API-Football (api-sports.io).
+// Returns every match scheduled today, grouped by competition, in the shape the page expects.
+//
+// SETUP
+//   1. Get a free key at https://www.api-football.com/  (dashboard -> API key)
+//   2. In Netlify: Site settings -> Environment variables -> add  APIFOOTBALL_KEY
+//   3. Deploy. The page calls /.netlify/functions/matchday-fixtures automatically.
+//
+// WHY A FUNCTION: the key must stay server-side, and the API doesn't send CORS
+// headers for browser requests. This wraps it and returns clean JSON.
+
 const KEY = process.env.APIFOOTBALL_KEY;
 const BASE = "https://v3.football.api-sports.io";
 
+/* ---- Arabic names -------------------------------------------------------
+   No football API serves Arabic team names, so we translate the teams,
+   competitions and countries your circle actually watches. Anything not in
+   the table falls back to the English/Latin name. Grow this over time.     */
 const AR = {
   teams: {
     "Real Madrid":"ريال مدريد","Barcelona":"برشلونة","Atletico Madrid":"أتلتيكو مدريد",
@@ -32,16 +47,18 @@ const AR = {
 };
 const ar = (table, en) => (en && AR[table][en]) || en;
 
+/* ---- Broadcasters: official rights-holders for YOUR region (GCC) by league id.
+   Only ever list licensed broadcasters here. Add league ids as you expand.  */
 const BROADCASTERS = {
-  2:   [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],
-  3:   [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],
-  39:  [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],
-  140: [{ n:"TOD TV",           u:"https://www.tod.tv/ar/sports" }],
-  135: [{ n:"TOD TV",           u:"https://www.tod.tv/ar/sports" }],
-  78:  [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],
-  61:  [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],
-  307: [{ n:"Saudi Sports",     u:"https://www.sssport.com/" }],
-  1:   [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }]
+  2:   [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],   // Champions League
+  3:   [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],   // Europa League
+  39:  [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],   // Premier League
+  140: [{ n:"TOD TV",           u:"https://www.tod.tv/ar/sports" }], // La Liga
+  135: [{ n:"TOD TV",           u:"https://www.tod.tv/ar/sports" }], // Serie A
+  78:  [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],   // Bundesliga
+  61:  [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }],   // Ligue 1
+  307: [{ n:"Saudi Sports",     u:"https://www.sssport.com/" }],    // Saudi Pro League
+  1:   [{ n:"beIN Sports MENA", u:"https://connect.bein.com/" }]    // World Cup
 };
 
 const roundLabel = (r) => {
@@ -50,10 +67,15 @@ const roundLabel = (r) => {
   return m ? { key:"round", n:Number(m[1]) } : null;
 };
 
-exports.handler = async () => {
+exports.handler = async (event) => {
   if (!KEY) return { statusCode:500, body: JSON.stringify({ error:"Missing APIFOOTBALL_KEY" }) };
   try {
-    const date = new Date().toISOString().slice(0,10);
+    // Date comes from the page (?date=YYYY-MM-DD); default to today; never the future.
+    const today = new Date().toISOString().slice(0,10);
+    let date = (event.queryStringParameters && event.queryStringParameters.date) || today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = today;
+    if (date > today) date = today;
+
     const res = await fetch(`${BASE}/fixtures?date=${date}`, { headers: { "x-apisports-key": KEY } });
     if (!res.ok) throw new Error(`api-football ${res.status}`);
     const json = await res.json();
@@ -78,8 +100,9 @@ exports.handler = async () => {
       groups[id].matches.push({
         home: { en: f.teams.home.name, ar: ar("teams", f.teams.home.name) },
         away: { en: f.teams.away.name, ar: ar("teams", f.teams.away.name) },
-        ko:   f.fixture.date,
+        ko:   f.fixture.date,                 // UTC ISO — page converts to each viewer's local tz
         status,
+        score: { h: f.goals.home, a: f.goals.away },   // null until kickoff
         tv:   BROADCASTERS[id] || []
       });
     }
@@ -88,6 +111,7 @@ exports.handler = async () => {
       statusCode: 200,
       headers: {
         "Content-Type": "application/json",
+        // Cache at the CDN so many viewers don't burn your daily API quota.
         "Netlify-CDN-Cache-Control": "public, max-age=60, stale-while-revalidate=300",
         "Cache-Control": "public, max-age=60"
       },
