@@ -55,6 +55,8 @@
   .langswitch button{ border:0; background:transparent; color:var(--ink-soft); padding:6px 11px; font-size:12px; font-weight:600; }
   .langswitch button.on{ background:var(--floodlight); color:#0a0f08; }
   .leave{ border:1px solid var(--line); background:transparent; color:var(--ink-soft); border-radius:8px; padding:6px 11px; font-size:12px; }
+  .support{ border:1px solid var(--goal); background:rgba(255,92,57,.12); color:var(--goal); border-radius:8px; padding:6px 11px; font-size:12px; font-weight:700; text-decoration:none; white-space:nowrap; }
+  .support:hover{ background:rgba(255,92,57,.2); }
 
   .watchers{ display:flex; align-items:center; gap:6px; padding:10px 16px; flex-wrap:wrap; }
   .watchers .lbl{ font-size:12px; color:var(--ink-faint); margin-inline-end:4px; }
@@ -171,6 +173,7 @@
       </div>
       <div class="right">
         <span class="roomcode" id="roomCode"></span>
+        <a class="support" id="supportBtn" target="_blank" rel="noopener noreferrer" style="display:none">♥ <span id="supportLbl"></span></a>
         <div class="langswitch"><button id="enBtn" class="on" onclick="setLang('en')">EN</button><button id="arBtn" onclick="setLang('ar')">ع</button></div>
         <button class="leave" id="leaveBtn" onclick="location.href='index.html'"></button>
       </div>
@@ -236,14 +239,15 @@
    (Realtime works with just these two values. No database tables needed.)
    ========================================================================= */
 const CONFIG = {
-  SUPABASE_URL: "https://ptutafrzdvfyiuezrzlm.supabase.co",        // e.g. https://abcd1234.supabase.co
-  SUPABASE_ANON_KEY: "sb_publishable_n7H-N6BKs9K0bhLvWyvcrQ_ilEbWv6G"    // the "anon public" key (safe to ship in the browser)
+  SUPABASE_URL: "",        // e.g. https://abcd1234.supabase.co
+  SUPABASE_ANON_KEY: "",   // the "anon public" key (safe to ship in the browser)
+  SUPPORT_URL: ""          // your tip/support page (Ko-fi, Stripe Payment Link, etc.) — leave "" to hide the button
 };
 
 /* ---- i18n ---------------------------------------------------------------- */
 const I18N = {
   en:{ joinTitle:"Join the room", joinSub:m=>`You're joining ${m}.`, nameLbl:"Your name",
-       join:"Join", leave:"Leave", room:"Room", stage:"Matchday stage",
+       join:"Join", leave:"Leave", room:"Room", stage:"Matchday stage", support:"Support",
        byo:"Open your own licensed stream (beIN, TOD, the official channel) in another tab and keep this room beside it. We sync the room — the chat, the reactions, the game — you bring the picture.",
        kickoff:"Kick off", stopclock:"Stop", chat:"Live chat", say:"Say something…", send:"Send",
        preds:"Friendly predictions", lock:"Lock predictions", locked:"Predictions locked",
@@ -254,7 +258,7 @@ const I18N = {
        q:{ result:"Final result?", goals:"Total goals?", btts:"Both teams to score?", red:"A red card?" },
        opt:{ draw:"Draw", over:"Over 2.5", under:"Under 2.5", yes:"Yes", no:"No" } },
   ar:{ joinTitle:"انضم إلى الغرفة", joinSub:m=>`أنت تنضم إلى ${m}.`, nameLbl:"اسمك",
-       join:"انضمام", leave:"خروج", room:"غرفة", stage:"منصة المباراة",
+       join:"انضمام", leave:"خروج", room:"غرفة", stage:"منصة المباراة", support:"ادعمنا",
        byo:"افتح بث المباراة المرخّص (beIN أو TOD أو القناة الرسمية) في نافذة أخرى وضعه بجانب هذه الغرفة. نحن نزامن الغرفة — الدردشة والتفاعلات واللعبة — وأنت تجلب الصورة.",
        kickoff:"انطلاق", stopclock:"إيقاف", chat:"دردشة مباشرة", say:"اكتب شيئاً…", send:"إرسال",
        preds:"توقعات ودية", lock:"تثبيت التوقعات", locked:"تم تثبيت التوقعات",
@@ -344,8 +348,18 @@ function connect(){
     .on('broadcast', { event:'results' }, ({ payload }) => applyResults(payload.answers))
     .subscribe(async status => { if(status==='SUBSCRIBED') await track(); });
 
+  // Report presence to a shared "lobby" channel so an admin overview can see
+  // which rooms are occupied and who's in them. Auto-removes on disconnect.
+  lobby = sb.channel('lobby', { config:{ presence:{ key:me.id } } });
+  lobby.subscribe(async status => {
+    if(status==='SUBSCRIBED') await lobby.track({
+      id: me.id, name: me.name, roomId: MATCH.id, roomLabel: `${MATCH.hEn} v ${MATCH.aEn}`
+    });
+  });
+
   setInterval(tickClock, 1000);
 }
+let lobby = null;
 async function track(){
   await channel.track({ id:me.id, name:me.name, color:me.color, joinedAt:Date.now(), score:myScore, hasPreds:locked });
 }
@@ -497,6 +511,8 @@ function applyStatic(){
   document.getElementById('nameLbl').textContent=t('nameLbl');
   document.getElementById('joinBtn').textContent=t('join');
   document.getElementById('leaveBtn').textContent=t('leave');
+  const sup=document.getElementById('supportBtn');
+  if(CONFIG.SUPPORT_URL){ sup.href=CONFIG.SUPPORT_URL; sup.style.display=''; document.getElementById('supportLbl').textContent=t('support'); }
   document.getElementById('matchTitle').textContent=matchLabel();
   document.getElementById('roomCode').innerHTML=`${t('room')} <b>${MATCH.id}</b>`;
   document.getElementById('stageH').textContent=t('stage');
