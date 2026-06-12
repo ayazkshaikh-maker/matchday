@@ -98,10 +98,12 @@ exports.handler = async (event) => {
         ["FT","AET","PEN"].includes(s) ? "ft" : "upcoming";
 
       groups[id].matches.push({
+        id:   f.fixture.id,                   // used to merge live events from /fixtures?live=all
         home: { en: f.teams.home.name, ar: ar("teams", f.teams.home.name) },
         away: { en: f.teams.away.name, ar: ar("teams", f.teams.away.name) },
         ko:   f.fixture.date,                 // UTC ISO — page converts to each viewer's local tz
         status,
+        elapsed: f.fixture.status.elapsed,    // live minute (null when not in play)
         score: { h: f.goals.home, a: f.goals.away },   // null until kickoff
         tv:   BROADCASTERS[id] || []
       });
