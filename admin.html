@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Matchday · Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Saira+Condensed:wght@600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ground:#0B130E; --ground-2:#0F1A12; --surface:#14211A; --surface-2:#1B2C22;
+    --line:rgba(255,255,255,0.08); --floodlight:#C5F32C; --goal:#FF5C39;
+    --ink:#EEF3EC; --ink-soft:#93A398; --ink-faint:#5E6E63;
+    --fd:"Saira Condensed",system-ui,sans-serif; --fb:"IBM Plex Sans Arabic",system-ui,sans-serif;
+  }
+  *{ box-sizing:border-box; } html,body{ margin:0; min-height:100%; }
+  body{ background:repeating-linear-gradient(180deg,var(--ground) 0 46px,var(--ground-2) 46px 92px); color:var(--ink); font-family:var(--fb); -webkit-font-smoothing:antialiased; }
+  button{ font-family:inherit; cursor:pointer; }
+
+  .screen{ min-height:100vh; display:grid; place-items:center; padding:24px; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:30px; max-width:400px; width:100%; }
+  .card h1{ font-family:var(--fd); font-size:30px; margin:0 0 6px; }
+  .card p{ color:var(--ink-soft); font-size:14px; margin:0 0 18px; }
+  .card input{ width:100%; background:var(--ground); border:1px solid var(--line); color:var(--ink); border-radius:10px; padding:13px 14px; font-family:var(--fb); font-size:16px; }
+  .btn{ border:0; border-radius:10px; background:var(--floodlight); color:#0a0f08; font-weight:700; font-size:15px; padding:13px; width:100%; margin-top:16px; }
+  .err{ color:var(--goal); font-size:13px; margin-top:10px; min-height:18px; }
+  .setup ol{ color:var(--ink-soft); font-size:14px; line-height:1.8; padding-inline-start:20px; }
+  code{ background:var(--ground); padding:2px 7px; border-radius:6px; color:var(--floodlight); font-size:13px; }
+
+  .wrap{ max-width:880px; margin:0 auto; padding:22px 18px 70px; }
+  .head{ display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .head .dot{ width:11px; height:11px; border-radius:50%; background:var(--floodlight); box-shadow:0 0 14px var(--floodlight); }
+  .head h1{ font-family:var(--fd); font-size:24px; margin:0; letter-spacing:.04em; }
+  .sub{ color:var(--ink-faint); font-size:13px; margin-bottom:20px; }
+
+  .totals{ display:flex; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+  .tot{ flex:1; min-width:130px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .tot .n{ font-family:var(--fd); font-size:34px; font-weight:800; line-height:1; }
+  .tot .k{ color:var(--ink-faint); font-size:12px; text-transform:uppercase; letter-spacing:.1em; margin-top:6px; }
+  .tot.live .n{ color:var(--goal); }
+
+  .rooms{ display:grid; gap:12px; }
+  .room{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:15px 17px; }
+  .room-top{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .room-code{ font-family:var(--fd); font-weight:800; font-size:15px; color:var(--floodlight); }
+  .room-label{ font-weight:600; font-size:15px; }
+  .room-count{ margin-inline-start:auto; background:var(--surface-2); border:1px solid var(--line); border-radius:999px; padding:3px 11px; font-size:13px; font-weight:700; }
+  .names{ display:flex; flex-wrap:wrap; gap:7px; }
+  .name{ background:var(--ground); border:1px solid var(--line); border-radius:7px; padding:4px 10px; font-size:13px; color:var(--ink-soft); }
+  .empty{ text-align:center; color:var(--ink-soft); padding:54px 20px; border:1px dashed var(--line); border-radius:14px; }
+  .refreshing{ color:var(--ink-faint); font-size:12px; }
+  :focus-visible{ outline:2px solid var(--floodlight); outline-offset:2px; }
+</style>
+</head>
+<body>
+
+  <!-- SETUP (missing keys) -->
+  <div class="screen" id="setupScreen" style="display:none">
+    <div class="card setup">
+      <h1>Admin setup</h1>
+      <p>Add your keys to the <code>CONFIG</code> block at the top of <code>admin.html</code>:</p>
+      <ol>
+        <li>Same <code>SUPABASE_URL</code> and <code>anon public</code> key you used in <code>room.html</code></li>
+        <li>An <code>ADMIN_PASSWORD</code> of your choosing</li>
+        <li>Redeploy</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- LOGIN -->
+  <div class="screen" id="loginScreen" style="display:none">
+    <div class="card">
+      <h1>Admin</h1>
+      <p>Enter the admin password to view live rooms.</p>
+      <input id="pw" type="password" placeholder="Password" autocomplete="off" />
+      <button class="btn" id="loginBtn">View dashboard</button>
+      <div class="err" id="loginErr"></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dash" style="display:none">
+    <div class="wrap">
+      <div class="head"><span class="dot"></span><h1>LIVE ROOMS</h1></div>
+      <div class="sub" id="sub">Connecting…</div>
+      <div class="totals">
+        <div class="tot"><div class="n" id="totRooms">0</div><div class="k">Active rooms</div></div>
+        <div class="tot live"><div class="n" id="totViewers">0</div><div class="k">People watching</div></div>
+      </div>
+      <div class="rooms" id="rooms"></div>
+    </div>
+  </div>
+
+<script>
+/* =========================================================================
+   CONFIG — same Supabase project as room.html, plus an admin password.
+   ========================================================================= */
+const CONFIG = {
+  SUPABASE_URL: "",        // same as room.html
+  SUPABASE_ANON_KEY: "",   // same anon public key as room.html
+  ADMIN_PASSWORD: "change-me"
+};
+
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function boot(){
+  if(!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY){
+    document.getElementById('setupScreen').style.display='grid'; return;
+  }
+  document.getElementById('loginScreen').style.display='grid';
+  document.getElementById('pw').focus();
+  document.getElementById('loginBtn').onclick = tryLogin;
+  document.getElementById('pw').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
+}
+function tryLogin(){
+  const v = document.getElementById('pw').value;
+  if(v === CONFIG.ADMIN_PASSWORD){
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('dash').style.display='block';
+    connect();
+  } else {
+    document.getElementById('loginErr').textContent = 'Wrong password.';
+  }
+}
+
+let sb, lobby;
+function connect(){
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  lobby = sb.channel('lobby', { config:{ presence:{ key:'admin-'+Math.random().toString(36).slice(2) } } });
+  lobby
+    .on('presence', { event:'sync' }, renderDash)
+    .subscribe(status=>{ if(status==='SUBSCRIBED'){ document.getElementById('sub').textContent='Live · updates in real time'; renderDash(); } });
+}
+
+function renderDash(){
+  const state = lobby.presenceState();
+  // flatten every presence entry (ignore our own admin presence — it has no roomId)
+  const people = Object.values(state).flat().filter(p=>p && p.roomId);
+
+  // group by room
+  const rooms = {};
+  for(const p of people){
+    if(!rooms[p.roomId]) rooms[p.roomId] = { id:p.roomId, label:p.roomLabel||'', names:[] };
+    rooms[p.roomId].names.push(p.name||'—');
+  }
+  const list = Object.values(rooms).sort((a,b)=>b.names.length-a.names.length);
+
+  document.getElementById('totRooms').textContent = list.length;
+  document.getElementById('totViewers').textContent = people.length;
+
+  const box = document.getElementById('rooms');
+  if(!list.length){
+    box.innerHTML = `<div class="empty">No active rooms right now. They'll appear here the moment someone joins one.</div>`;
+    return;
+  }
+  box.innerHTML = list.map(r=>`
+    <div class="room">
+      <div class="room-top">
+        <span class="room-code">${esc(r.id)}</span>
+        <span class="room-label">${esc(r.label)}</span>
+        <span class="room-count">${r.names.length} 👀</span>
+      </div>
+      <div class="names">${r.names.map(n=>`<span class="name">${esc(n)}</span>`).join('')}</div>
+    </div>`).join('');
+}
+
+boot();
+</script>
+</body>
+</html>
