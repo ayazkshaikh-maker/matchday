@@ -93,6 +93,21 @@
   .board .presenter a:hover{ text-decoration:underline; }
   .board .meta{ position:relative; z-index:2; display:flex; gap:26px; margin-top:20px; flex-wrap:wrap; }
 
+  /* ---------- Date navigation ---------- */
+  .datebar{ display:flex; align-items:center; gap:10px; margin-top:20px; }
+  .dnav{ width:38px; height:38px; flex:none; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:10px; font-size:20px; line-height:1; display:grid; place-items:center; }
+  .dnav:hover:not(:disabled){ border-color:var(--floodlight); }
+  .dnav:disabled{ opacity:.35; cursor:not-allowed; }
+  .datepick-wrap{ position:relative; flex:1; display:flex; align-items:center; justify-content:center; border:1px solid var(--line); background:var(--surface); border-radius:10px; padding:9px 14px; cursor:pointer; font-family:var(--font-display); font-weight:700; font-size:16px; letter-spacing:.02em; }
+  html[lang="ar"] .datepick-wrap{ letter-spacing:0; }
+  .datepick-wrap input{ position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; }
+  .todaybtn{ flex:none; border:1px solid var(--floodlight); background:transparent; color:var(--floodlight); border-radius:10px; padding:0 16px; height:38px; font-weight:700; font-size:13px; }
+  .todaybtn:hover{ background:rgba(197,243,44,.12); }
+
+  /* ---------- Score (live / finished) ---------- */
+  .score{ font-family:var(--font-display); font-size:26px; font-weight:800; letter-spacing:.04em; display:inline-flex; align-items:baseline; gap:8px; }
+  .score .dash{ color:var(--ink-faint); font-weight:600; }
+
   /* ---------- News ticker ---------- */
   .ticker{ direction:ltr; display:flex; align-items:stretch; margin-top:16px; border:1px solid var(--line); background:var(--surface); border-radius:10px; overflow:hidden; }
   .ticker[hidden]{ display:none; }
@@ -228,6 +243,16 @@
       <div class="viewport"><div class="track" id="newsTrack"></div></div>
     </div>
 
+    <div class="datebar">
+      <button class="dnav" id="dprev" onclick="shiftDate(-1)" aria-label="Previous day">‹</button>
+      <label class="datepick-wrap">
+        <span id="dateLabel"></span>
+        <input type="date" id="datePick" onchange="onDatePick(this.value)" />
+      </label>
+      <button class="dnav" id="dnext" onclick="shiftDate(1)" aria-label="Next day">›</button>
+      <button class="todaybtn" id="todayBtn" onclick="goToday()" style="display:none"></button>
+    </div>
+
     <div class="tabs">
       <button class="tab on" id="tabAll" onclick="setFilter('all')"></button>
       <button class="tab" id="tabLive" onclick="setFilter('live')"></button>
@@ -264,6 +289,7 @@
 /* ---- i18n strings -------------------------------------------------------- */
 const I18N = {
   en:{ brand:"MATCHDAY", title:"Matchday", today:"Today's Matches", fixtures:"Fixtures",
+       matches:"Matches", yesterday:"Yesterday", todayShort:"Today",
        live:"Live now", all:"All", liveTab:"Live", round:"Round", final:"Final",
        semi:"Semi-final", quarter:"Quarter-final", upcoming:"", liveLabel:"LIVE",
        ft:"Full time", watchOn:"Watch live on", together:"Watch together",
@@ -275,6 +301,7 @@ const I18N = {
        footLegal:"Broadcaster links point to official, licensed rights-holders only.",
        footBuild:"Live fixtures · watch rooms · friendly predictions" },
   ar:{ brand:"يوم المباراة", title:"مباريات اليوم", today:"مباريات اليوم", fixtures:"مباراة",
+       matches:"المباريات", yesterday:"الأمس", todayShort:"اليوم",
        live:"مباشر الآن", all:"الكل", liveTab:"مباشر", round:"الجولة", final:"النهائي",
        semi:"نصف النهائي", quarter:"ربع النهائي", upcoming:"", liveLabel:"مباشر",
        ft:"انتهت", watchOn:"شاهد مباشرة على", together:"شاهد معاً",
@@ -325,13 +352,13 @@ const COMPETITIONS = [
    the API key), so the page always renders something.                       */
 async function getFixtures(){
   try{
-    const r = await fetch('/.netlify/functions/matchday-fixtures');
+    const r = await fetch('/.netlify/functions/matchday-fixtures?date='+selectedDate);
     if(!r.ok) throw new Error('fn');
     const data = await r.json();
     if(Array.isArray(data) && data.length) return data;
-    throw new Error('empty');
+    return [];   // a real empty day (e.g. a past date with no matches) — not an error
   }catch(e){
-    return COMPETITIONS; // sample fallback
+    return isToday(selectedDate) ? COMPETITIONS : [];  // sample only stands in for today
   }
 }
 
@@ -339,6 +366,28 @@ async function getFixtures(){
 let lang = 'en';            // in-memory (artifact-safe). On deploy you may persist to localStorage.
 let filter = 'all';
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/* ---- Date helpers (for browsing past / future days) ---------------------- */
+function isoOf(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function todayISO(){ return isoOf(new Date()); }
+function isToday(iso){ return iso === todayISO(); }
+let selectedDate = todayISO();
+function shiftDate(days){
+  const d = new Date(selectedDate + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  selectedDate = isoOf(d);
+  syncDateBar(); applyStatic(); render();
+}
+function goToday(){ selectedDate = todayISO(); syncDateBar(); applyStatic(); render(); }
+function onDatePick(v){ if(v){ selectedDate = v; syncDateBar(); applyStatic(); render(); } }
+function syncDateBar(){
+  const inp = document.getElementById('datePick');
+  if(inp){ inp.value = selectedDate; inp.max = todayISO(); }   // can't browse the future
+  const todayBtn = document.getElementById('todayBtn');
+  if(todayBtn) todayBtn.style.display = isToday(selectedDate) ? 'none' : '';
+  const next = document.getElementById('dnext');
+  if(next) next.disabled = isToday(selectedDate);
+}
 
 /* ---- Helpers ------------------------------------------------------------- */
 function t(k){ return I18N[lang][k]; }
@@ -385,9 +434,14 @@ async function render(){
   for(const c of visible){
     const rows = c.matches.map(m=>{
       const isLive = m.status==='live';
+      const isFt   = m.status==='ft';
+      const hasScore = m.score && m.score.h!=null && m.score.a!=null;
+      const centerMain = ((isLive||isFt) && hasScore)
+        ? `<div class="score">${m.score.h}<span class="dash">-</span>${m.score.a}</div>`
+        : `<div class="ko">${localTime(m.ko)}</div>`;
       const statusHtml = isLive
         ? `<div class="status live">${t('liveLabel')}</div>`
-        : (m.status==='ft' ? `<div class="status">${t('ft')}</div>` : `<div class="status">${localTimeZoneShort()}</div>`);
+        : (isFt ? `<div class="status">${t('ft')}</div>` : '');
       const tv = m.tv.length
         ? `<div class="watch-on"><span class="watch-lbl">${t('watchOn')}:</span>${
             m.tv.map(x=>`<a class="chan" href="${x.u}" target="_blank" rel="noopener noreferrer">${x.n}</a>`).join('')}</div>`
@@ -396,7 +450,7 @@ async function render(){
         <div class="match">
           <div class="match-main">
             <div class="team home">${crest(m.home.en)}<span class="nm">${m.home[lang]}</span></div>
-            <div class="center"><div class="ko">${localTime(m.ko)}</div>${statusHtml}</div>
+            <div class="center">${centerMain}${statusHtml}</div>
             <div class="team away">${crest(m.away.en)}<span class="nm">${m.away[lang]}</span></div>
           </div>
           <div class="match-foot">
@@ -437,12 +491,22 @@ function setFilter(f){
 }
 function applyStatic(){
   document.getElementById('brandName').textContent = t('brand');
-  document.getElementById('lblToday').textContent = t('today');
+  document.getElementById('lblToday').textContent = isToday(selectedDate) ? t('today') : t('matches');
   document.getElementById('boardTitle').textContent = t('title');
   document.getElementById('lblFixtures').textContent = t('fixtures');
   document.getElementById('lblLiveNow').textContent = t('live');
+  const selDate = new Date(selectedDate + 'T12:00:00');
+  const locale = lang==='ar' ? 'ar' : 'en-GB';
   document.getElementById('boardDate').textContent =
-    new Intl.DateTimeFormat(lang==='ar'?'ar':'en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(today);
+    new Intl.DateTimeFormat(locale,{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(selDate);
+  // date-bar pill: friendly label for today / yesterday, otherwise the date
+  const yesterday = isoOf(new Date(Date.now()-86400000));
+  const pill = isToday(selectedDate) ? t('today')
+             : (selectedDate===yesterday ? t('yesterday')
+             : new Intl.DateTimeFormat(locale,{weekday:'short',day:'numeric',month:'short'}).format(selDate));
+  document.getElementById('dateLabel').textContent = pill;
+  syncDateBar();
+  document.getElementById('todayBtn').textContent = t('todayShort');
   document.getElementById('presenter').innerHTML =
     `${t('withHost')} <strong>Aws Al Kindi</strong> · <a href="https://www.youtube.com/@kooranation.0" target="_blank" rel="noopener noreferrer">Koora Nation ↗</a>`;
   document.getElementById('newsTag').textContent = t('newsTag');
