@@ -104,6 +104,13 @@
   .todaybtn{ flex:none; border:1px solid var(--floodlight); background:transparent; color:var(--floodlight); border-radius:10px; padding:0 16px; height:38px; font-weight:700; font-size:13px; }
   .todaybtn:hover{ background:rgba(197,243,44,.12); }
 
+  /* ---------- Live detail (goals / cards under a live match) ---------- */
+  .live-detail{ display:flex; gap:10px; padding:0 14px 12px; margin-top:-4px; }
+  .ld-home{ flex:1; display:flex; flex-wrap:wrap; gap:6px 12px; justify-content:flex-start; }
+  .ld-away{ flex:1; display:flex; flex-wrap:wrap; gap:6px 12px; justify-content:flex-end; }
+  .ev{ font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+  .ev .evi{ margin-inline-end:3px; }
+
   /* ---------- Score (live / finished) ---------- */
   .score{ font-family:var(--font-display); font-size:26px; font-weight:800; letter-spacing:.04em; display:inline-flex; align-items:baseline; gap:8px; }
   .score .dash{ color:var(--ink-faint); font-weight:600; }
@@ -365,6 +372,8 @@ async function getFixtures(){
 /* ---- State --------------------------------------------------------------- */
 let lang = 'en';            // in-memory (artifact-safe). On deploy you may persist to localStorage.
 let filter = 'all';
+let currentComps = [];      // last fixtures result, so live polling doesn't re-fetch the date call
+let liveData = {};          // fixtureId -> { elapsed, goals:{h,a}, events:[...] } from /fixtures?live=all
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /* ---- Date helpers (for browsing past / future days) ---------------------- */
@@ -407,8 +416,9 @@ function stageLabel(s){
 }
 
 /* ---- Render -------------------------------------------------------------- */
-async function render(){
-  const comps = await getFixtures();
+async function render(refetch=true){
+  if(refetch) currentComps = await getFixtures();
+  const comps = currentComps;
   const all = comps.flatMap(c=>c.matches);
   document.getElementById('statTotal').textContent = all.length;
   const liveCount = all.filter(m=>m.status==='live').length;
@@ -435,17 +445,23 @@ async function render(){
     const rows = c.matches.map(m=>{
       const isLive = m.status==='live';
       const isFt   = m.status==='ft';
-      const hasScore = m.score && m.score.h!=null && m.score.a!=null;
+      const live   = (isLive && m.id && liveData[m.id]) ? liveData[m.id] : null;
+      // live overlay wins for score + minute; otherwise use what the date call gave us
+      const sc = live && live.goals && live.goals.h!=null ? live.goals : m.score;
+      const hasScore = sc && sc.h!=null && sc.a!=null;
       const centerMain = ((isLive||isFt) && hasScore)
-        ? `<div class="score">${m.score.h}<span class="dash">-</span>${m.score.a}</div>`
+        ? `<div class="score">${sc.h}<span class="dash">-</span>${sc.a}</div>`
         : `<div class="ko">${localTime(m.ko)}</div>`;
+      const minute = (live && live.elapsed!=null) ? live.elapsed
+                   : (isLive && m.elapsed!=null ? m.elapsed : null);
       const statusHtml = isLive
-        ? `<div class="status live">${t('liveLabel')}</div>`
+        ? `<div class="status live">${t('liveLabel')}${minute!=null?` ${minute}'`:''}</div>`
         : (isFt ? `<div class="status">${t('ft')}</div>` : '');
       const tv = m.tv.length
         ? `<div class="watch-on"><span class="watch-lbl">${t('watchOn')}:</span>${
             m.tv.map(x=>`<a class="chan" href="${x.u}" target="_blank" rel="noopener noreferrer">${x.n}</a>`).join('')}</div>`
         : `<div class="watch-on"><span class="watch-lbl">${t('watchOn')}: —</span></div>`;
+      const detail = (live && live.events && live.events.length) ? liveDetail(live.events) : '';
       return `
         <div class="match">
           <div class="match-main">
@@ -453,6 +469,7 @@ async function render(){
             <div class="center">${centerMain}${statusHtml}</div>
             <div class="team away">${crest(m.away.en)}<span class="nm">${m.away[lang]}</span></div>
           </div>
+          ${detail}
           <div class="match-foot">
             ${tv}
             <button class="together" onclick="openRoom('${encodeURIComponent(m.home.en)}','${encodeURIComponent(m.away.en)}','${encodeURIComponent(m.home.ar)}','${encodeURIComponent(m.away.ar)}','${m.ko}')">⚡ ${t('together')}</button>
@@ -470,8 +487,42 @@ async function render(){
         <div class="matches">${rows}</div>
       </section>`);
   }
+
+  maybePollLive(liveCount);
 }
-function localTimeZoneShort(){ return ''; } // status under upcoming kickoff stays empty; time shown above
+
+/* Build the home/away events strip (goals + cards) shown under a live match. */
+function liveDetail(events){
+  const esc = s => (s||'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+  const icon = e => e.type==='goal' ? '⚽' : (e.type==='red' ? '🟥' : '🟨');
+  const chip = e => `<span class="ev"><span class="evi">${icon(e)}</span>${esc(e.player)} ${esc(String(e.minute))}'</span>`;
+  const home = events.filter(e=>e.side==='home').map(chip).join('');
+  const away = events.filter(e=>e.side==='away').map(chip).join('');
+  if(!home && !away) return '';
+  return `<div class="live-detail"><div class="ld-home">${home}</div><div class="ld-away">${away}</div></div>`;
+}
+
+/* ---- Live polling (one /fixtures?live=all call covers every live match) --- */
+let liveTimer = null;
+function maybePollLive(liveCount){
+  // poll only when viewing today AND something is live AND the tab is visible
+  const want = isToday(selectedDate) && liveCount>0 && document.visibilityState==='visible';
+  if(want && !liveTimer){
+    loadLive();
+    liveTimer = setInterval(()=>{ if(document.visibilityState==='visible') loadLive(); }, 60000);
+  } else if(!want && liveTimer){
+    clearInterval(liveTimer); liveTimer=null;
+  }
+}
+async function loadLive(){
+  try{
+    const r = await fetch('/.netlify/functions/matchday-live');
+    if(!r.ok) throw new Error('fn');
+    const data = await r.json();
+    if(data && typeof data==='object'){ liveData = data; render(false); }  // repaint without re-fetching fixtures
+  }catch(e){ /* function not deployed yet, or transient — keep last data */ }
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') render(false); });
 
 /* ---- Language + filter --------------------------------------------------- */
 function setLang(l){
